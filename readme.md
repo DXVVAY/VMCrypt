@@ -1,4 +1,4 @@
-# Python Virtual Machine
+# VMCrypt - Python Virtual Machine
 
 This project is a Python based virtual machine that can encrypt and decrypt strings. It includes a custom virtual machine (`VMCrypt`) and uses it for secure data encryption and decryption.
 
