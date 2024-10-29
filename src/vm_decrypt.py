@@ -1,15 +1,23 @@
-from src import log
-import base64
+from src import Cypher64
 
 class Decryptor:
     def __init__(self, key: list):
+        self.cypther64 = Cypher64()
         self.key = key
         self.data = None
 
     def decrypt(self, data: str) -> bytes:
         decrypted = bytearray()
         rounds, data = data.split(":")
-        data = base64.b64decode(data)
+        rounds = self.cypther64.decode(rounds)
+        iter = 4 if rounds > 300 else 3 if rounds > 100 else 2 if rounds > 50 else 1
+        data = self.cypther64.decode(data)
+        for _ in range(iter):
+            data = bytes.fromhex(data).decode()
+            data = self.cypther64.decode(data)
+            data = self.cypther64.decode(data)
+        data = bytes.fromhex(data)
+
         keys = [[(b ^ (i + 1)) & 0xFF for b in (bytes(self.key)[1:] + bytes(self.key)[:1])[:4]] for i in range(int(rounds))]
 
         for idx in range(len(data) // 16):

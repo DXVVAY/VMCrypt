@@ -1,13 +1,11 @@
 from src import log
-import struct
-import base64
 
 class VMCrypt:
     def __init__(self, memory_size: int = 4096, verbose: bool = False) -> None:
         self.regs: list = [0] * 8
         self.memory_size: int = memory_size
         self.memory: bytearray = bytearray(self.memory_size)
-        self.stack: int = []
+        self.stack: list = []
         self.ip: int = 0
         self.program: bytes = b""
         self.verbose: bool = verbose
@@ -42,8 +40,9 @@ class VMCrypt:
             0xFF: self.halt,
         }
 
-    def load_program(self, program: bytes) -> None:
-        program = base64.b64decode(program)
+        self.state_history = []
+
+    def load_program(self, program: str) -> None:
         self.program = bytes(program) if isinstance(program, list) else program
 
     def run(self) -> None:
@@ -57,6 +56,7 @@ class VMCrypt:
                 self.ops[opcode]()
                 if self.verbose:
                     self.log_state()
+                self.capture_state(opcode)
             else:
                 log.failure(f"Unknown opcode -> {hex(opcode)} | IP -> {self.ip}")
                 break
@@ -67,11 +67,11 @@ class VMCrypt:
 
     def read_int(self) -> int:
         self.ip += 4
-        return struct.unpack_from("<I", self.program, self.ip - 4)[0]
+        return int.from_bytes(self.program[self.ip - 4:self.ip], byteorder='little')
 
     def load_keys(self, keys: list) -> None:
         for i in range(len(keys)):
-            self.memory[i*4:(i+1)*4] = struct.pack("<I", keys[i])
+            self.memory[i*4:(i+1)*4] = keys[i].to_bytes(4, byteorder='little')
             
     def read_reg(self) -> int:
         reg = self.read_byte()
@@ -125,12 +125,12 @@ class VMCrypt:
         addr = self.read_int()
         reg = self.read_reg()
         val = self.memory[addr:addr+4]
-        self.regs[reg] = struct.unpack("<I", val)[0]
+        self.regs[reg] = int.from_bytes(val, byteorder='little')
 
     def store_reg(self) -> None:
         reg = self.read_reg()
         addr = self.read_int()
-        val = struct.pack("<I", self.regs[reg])
+        val = self.regs[reg].to_bytes(4, byteorder='little')
         self.memory[addr:addr+4] = val
 
     def add(self) -> None:
@@ -177,7 +177,7 @@ class VMCrypt:
 
     def not_op(self) -> None:
         reg = self.read_reg()
-        self.regs[reg] =~ self.regs[reg] & 0xFFFFFFFF
+        self.regs[reg] = ~self.regs[reg] & 0xFFFFFFFF
 
     def shl(self) -> None:
         reg = self.read_reg()
@@ -233,5 +233,26 @@ class VMCrypt:
     def halt(self) -> None:
         self.running = False
 
+    def capture_state(self, opcode: int) -> None:
+        self.state_history.append({
+            "opcode": opcode,
+            "ip": self.ip,
+            "regs": list(self.regs),
+            "memory": bytes(self.memory),
+            "stack": list(self.stack)
+        })
+
+    def dump_process(self, filename: str) -> None:
+        with open(filename, "w") as f:
+            for i, state in enumerate(self.state_history):
+                f.write(f"--- State {i + 1} ---\n")
+                f.write(f"Opcode: {hex(state['opcode'])}\n")
+                f.write(f"IP: {state['ip']}\n")
+                f.write("Registers: " + " ".join(f"R{i}: {state['regs'][i]}" for i in range(len(state['regs']))) + "\n")
+                memory = " ".join(f"{byte:02x}" for byte in state["memory"][:32])
+                f.write(f"Memory: {memory}\n")
+                f.write(f"Stack: {state['stack']}\n")
+                f.write("\n")
+            
     def log_state(self) -> None:
         log.debug(f"IP -> {self.ip} | regs -> {self.regs} | Stack -> {self.stack} | Memory -> {self.memory[:15]}...")
